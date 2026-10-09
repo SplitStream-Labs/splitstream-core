@@ -1,0 +1,97 @@
+name: Docs
+
+# Builds the unified documentation site from all three SplitStream
+# repositories and publishes it to GitHub Pages at
+# https://splitstream-labs.github.io/splitstream-core/
+#
+# The sibling repositories are public, so they are checked out at build time —
+# the site always reflects their current `main`. The weekly schedule refreshes
+# the site even when this repository has not changed.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - docs-hub/**
+      - mkdocs.yml
+      - requirements-docs.txt
+      - scripts/assemble_docs.py
+      - assets/**
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deployments at once; let an in-flight run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout splitstream-core
+        uses: actions/checkout@v4
+
+      - name: Checkout splitstream-actions
+        uses: actions/checkout@v4
+        with:
+          repository: SplitStream-Labs/splitstream-actions
+          ref: main
+          path: siblings/splitstream-actions
+
+      - name: Checkout splitstream-sdk-cli
+        uses: actions/checkout@v4
+        with:
+          repository: SplitStream-Labs/splitstream-sdk-cli
+          ref: main
+          path: siblings/splitstream-sdk-cli
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install docs dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Assemble combined docs
+        run: |
+          python scripts/assemble_docs.py \
+            --core docs \
+            --actions siblings/splitstream-actions/docs \
+            --sdk-cli siblings/splitstream-sdk-cli/docs \
+            --hub docs-hub \
+            --assets assets \
+            --out .docs-build/docs
+
+      - name: Build site
+        # Not --strict: the sibling repositories are pulled from their current
+        # main at build time, so a new page there must not fail the deployment.
+        run: mkdocs build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

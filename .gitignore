@@ -12,3 +12,12 @@ contracts/*/target/
 .vscode/
 # Soroban test snapshots
 contracts/vault/test_snapshots/
+
+# Documentation site build outputs and build-time checkouts
+/docs-build/
+/.docs-build/
+/site/
+/siblings/
+.venv/
+__pycache__/
+*.pyc
