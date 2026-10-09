@@ -74,6 +74,15 @@ jobs:
             --assets assets \
             --out .docs-build/docs
 
+      # Enables GitHub Pages on the repository the first time this workflow
+      # runs, using the workflow's own `pages: write` token. Without this, a
+      # brand-new repository has no Pages site and `deploy-pages` fails with
+      # "Ensure GitHub Pages has been enabled".
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Build site
         # Not --strict: the sibling repositories are pulled from their current
         # main at build time, so a new page there must not fail the deployment.
