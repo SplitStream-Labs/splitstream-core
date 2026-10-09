@@ -1,0 +1,22 @@
+# Protocol-critical files. Changes here affect on-chain behavior or the frozen
+# cross-repo contract with splitstream-actions and splitstream-sdk-cli, so they
+# require maintainer review.
+/contracts/vault/src/merkle.rs    @Oyinkans0la12
+/contracts/vault/src/errors.rs    @Oyinkans0la12
+/contracts/vault/src/storage.rs   @Oyinkans0la12
+/contracts/vault/src/lib.rs       @Oyinkans0la12
+/contracts/vault/src/claims.rs    @Oyinkans0la12
+/contracts/vault/src/fixed_split.rs @Oyinkans0la12
+/contracts/vault/src/vesting.rs   @Oyinkans0la12
+/contracts/vault/src/sweep.rs     @Oyinkans0la12
+
+# Documentation hub and cross-repo contract docs.
+/docs/                            @Oyinkans0la12
+/docs-hub/                        @Oyinkans0la12
+/CONTRIBUTING.md                  @Oyinkans0la12
+/SECURITY.md                      @Oyinkans0la12
+
+# CI and tooling.
+/.github/                         @Oyinkans0la12
+/mkdocs.yml                       @Oyinkans0la12
+/scripts/                         @Oyinkans0la12

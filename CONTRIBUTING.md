@@ -2,7 +2,8 @@
 
 ## Development setup
 
-- Rust 1.84+ (required for the `wasm32v1-none` Soroban target).
+- Rust 1.91+ (required for the `wasm32v1-none` Soroban target, and the MSRV
+  declared by `soroban-sdk` 27.0.6).
 - `rustup target add wasm32v1-none` — used by `stellar contract build`.
 - `stellar-cli` 27.x (matching `soroban-sdk` 27.x) for building the deployable
   wasm. Never use `cargo build` to produce the contract artifact — it does not

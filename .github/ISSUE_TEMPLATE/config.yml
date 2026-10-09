@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Report
+    url: https://github.com/SplitStream-Labs/splitstream-core/blob/main/SECURITY.md
+    about: Please review our security policy and report vulnerabilities privately.
+  - name: Documentation
+    url: https://splitstream-labs.github.io/splitstream-core/
+    about: Unified documentation for splitstream-core, splitstream-actions, and splitstream-sdk-cli.

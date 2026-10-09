@@ -4,12 +4,13 @@
 
 # SplitStream
 
-![CI](https://github.com/Oyinkans0la12/splitstream-core/actions/workflows/ci.yml/badge.svg)
-![Soroban SDK](https://img.shields.io/badge/soroban--sdk-27.0.6-blue)
-![Network](https://img.shields.io/badge/network-testnet-orange)
-![License](https://img.shields.io/github/license/Oyinkans0la12/splitstream-core)
+[![CI](https://github.com/SplitStream-Labs/splitstream-core/actions/workflows/ci.yml/badge.svg)](https://github.com/SplitStream-Labs/splitstream-core/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-splitstream--labs.github.io-blue)](https://splitstream-labs.github.io/splitstream-core/)
+[![Soroban SDK](https://img.shields.io/badge/soroban--sdk-27.0.6-blue)](https://crates.io/crates/soroban-sdk)
+[![Network](https://img.shields.io/badge/network-testnet-orange)](https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC)
+[![License](https://img.shields.io/github/license/SplitStream-Labs/splitstream-core)](LICENSE)
 
-[Docs](https://splitstream.gitbook.io/splitstream-core/) · [Testnet Explorer](https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+**[📖 Documentation](https://splitstream-labs.github.io/splitstream-core/)** · [Testnet Explorer](https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 **SplitStreamVault** is a Soroban smart contract that pools funds (a single
 SEP-41 token per deployment — USDC or native XLM SAC) and settles them to
@@ -30,10 +31,29 @@ contributor list in a single transaction.
 
 > **Part of SplitStream** — this repo is one of three: **splitstream-core** (this
 > repo, the Soroban vault contract that holds and settles the funds),
-> [splitstream-actions] (the GitHub→chain bridge that computes each cycle's
-> payout manifest and relays its Merkle root on-chain), and
-> [splitstream-sdk-cli] (the client SDK and CLI contributors claim with and
-> maintainers simulate and report with).
+> [splitstream-actions](https://github.com/SplitStream-Labs/splitstream-actions)
+> (the GitHub→chain bridge that computes each cycle's payout manifest and
+> relays its Merkle root on-chain), and
+> [splitstream-sdk-cli](https://github.com/SplitStream-Labs/splitstream-sdk-cli)
+> (the client SDK and CLI contributors claim with and maintainers simulate and
+> report with). All three are documented together on the
+> **[unified docs site](https://splitstream-labs.github.io/splitstream-core/)**.
+
+## How the pieces fit
+
+```mermaid
+flowchart LR
+    GH["Merged PRs\n(GitHub org)"] --> ACT["splitstream-actions\ncount → manifest → Merkle root"]
+    ACT -->|"post_cycle_root"| CORE["splitstream-core\nSoroban vault"]
+    CORE -->|"24h dispute window"| READY["Claims open"]
+    READY -->|"proof + withdraw"| SC["splitstream-sdk-cli\nclaim, simulate, status"]
+    SC --> WALLET["Contributor wallet"]
+```
+
+The contract never knows about GitHub, points, or issue counts — it only
+verifies `(address, amount)` pairs against a committed root and pays them. The
+full cross-repo design is on the
+[architecture page](https://splitstream-labs.github.io/splitstream-core/architecture/).
 
 ## The challenge-window mechanism
 
@@ -45,9 +65,22 @@ it. Once the first claim succeeds, the root is final: replacement is rejected
 after `claims_started` is set, and the window itself is bounded to 24h from the
 original post (replacement never restarts it).
 
+## Documentation
+
+The **[unified docs site](https://splitstream-labs.github.io/splitstream-core/)**
+merges the documentation of all three repos into one place, rebuilt from each
+repo's `main` on every change:
+
+| Section | Covers |
+|---|---|
+| [Overview & Architecture](https://splitstream-labs.github.io/splitstream-core/architecture/) | How the three repos fit together and the frozen cross-repo interfaces. |
+| [splitstream-core](https://splitstream-labs.github.io/splitstream-core/core/introduction/) | Protocol mechanics, the full contract reference, maintainer operations, and the developer guide. |
+| [splitstream-actions](https://splitstream-labs.github.io/splitstream-core/actions/introduction/) | The GitHub→chain bridge and the payout-manifest format. |
+| [splitstream-sdk-cli](https://splitstream-labs.github.io/splitstream-core/sdk-cli/introduction/) | The SDK and CLI reference for contributors and maintainers. |
+
 ## Quick Start
 
-Rust 1.84+ is required (the `wasm32v1-none` target). Pinned SDK:
+Rust 1.91+ is required (the `wasm32v1-none` target). Pinned SDK:
 `soroban-sdk = "27.0.6"` (latest stable; do not use release candidates).
 
 ```bash
@@ -94,6 +127,9 @@ extends the entry TTL in the same call (`storage::bump_persistent`) — a missin
 | `cancel_sweep()` | admin | Clears a pending sweep request (idempotent). |
 | `get_balance(contributor)` / `get_cycle_info(cycle_id)` / `has_claimed(cycle_id, contributor)` / `get_vesting(contributor)` / `get_fixed_shares()` | — | Read-only views. |
 
+The [contract reference](https://splitstream-labs.github.io/splitstream-core/core/contract-reference/)
+documents every parameter, event, and error discriminant.
+
 ## Deployed — Testnet
 
 | | |
@@ -117,6 +153,10 @@ contracts/vault/src/
 ├── vesting.rs     # create_vesting, claim_vested
 ├── sweep.rs       # request/execute/cancel sweep
 └── test.rs        # one test module per feature
+
+docs/              # this repo's documentation (merged into the unified site)
+docs-hub/          # landing page + cross-repo architecture page for the site
+scripts/           # assemble_docs.py — merges the three repos' docs for MkDocs
 ```
 
 ## Design decisions & known deviations
@@ -145,11 +185,11 @@ These are deliberate, documented decisions (each noted in its commit message):
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
 build/test workflow and PR expectations, and [SECURITY.md](SECURITY.md) for
 the security model and responsible-disclosure process. Found a bug or have a
-feature idea? [Open an issue](https://github.com/Oyinkans0la12/splitstream-core/issues).
+feature idea? [Open an issue](https://github.com/SplitStream-Labs/splitstream-core/issues/new/choose).
 
 ## Contributors
 
-[![Contributors](https://contrib.rocks/image?repo=Oyinkans0la12/splitstream-core)](https://github.com/Oyinkans0la12/splitstream-core/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=SplitStream-Labs/splitstream-core)](https://github.com/SplitStream-Labs/splitstream-core/graphs/contributors)
 
 ## Community
 
@@ -179,9 +219,9 @@ feature idea? [Open an issue](https://github.com/Oyinkans0la12/splitstream-core/
     <td align="left">
       <strong>Contact</strong>
       <br />
-      <a href="https://github.com/Oyinkans0la12/splitstream-core/issues">GitHub Issues</a> — primary channel for bugs, feature requests, and design discussion
+      <a href="https://github.com/SplitStream-Labs/splitstream-core/issues">GitHub Issues</a> — primary channel for bugs, feature requests, and design discussion
       <br />
-      🔒 For vulnerabilities, use a <a href="https://github.com/Oyinkans0la12/splitstream-core/security/advisories/new">private security advisory</a> per SECURITY.md
+      🔒 For vulnerabilities, use a <a href="https://github.com/SplitStream-Labs/splitstream-core/security/advisories/new">private security advisory</a> per SECURITY.md
     </td>
   </tr>
 </table>
@@ -190,5 +230,5 @@ feature idea? [Open an issue](https://github.com/Oyinkans0la12/splitstream-core/
 
 This project is licensed under the MIT License — see [LICENSE](./LICENSE) for details.
 
-[splitstream-actions]: https://github.com/Oyinkans0la12/splitstream-actions
-[splitstream-sdk-cli]: https://github.com/Oyinkans0la12/splitstream-sdk-cli
+[splitstream-actions]: https://github.com/SplitStream-Labs/splitstream-actions
+[splitstream-sdk-cli]: https://github.com/SplitStream-Labs/splitstream-sdk-cli

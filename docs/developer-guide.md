@@ -2,8 +2,9 @@
 
 ## Local setup
 
-- **Rust 1.84+** — `rust-version = "1.84"` in the workspace manifest, required
-  for the `wasm32v1-none` Soroban target.
+- **Rust 1.91+** — `rust-version = "1.91"` in the workspace manifest, required
+  for the `wasm32v1-none` Soroban target and the MSRV declared by
+  `soroban-sdk` 27.0.6.
 - **Soroban target** — `rustup target add wasm32v1-none`.
 - **`soroban-sdk` is pinned to `27.0.6`** in `contracts/vault/Cargo.toml`. Do
   not use release candidates. The test dependency uses the same version with the

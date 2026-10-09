@@ -1,0 +1,112 @@
+# Unified SplitStream documentation site.
+#
+# The site is assembled at build time from three repositories by
+# scripts/assemble_docs.py — this repo (splitstream-core), splitstream-actions,
+# and splitstream-sdk-cli. docs_dir points at the assembled tree, which is not
+# checked in; see .github/workflows/docs.yml.
+site_name: SplitStream
+site_description: >-
+  On-chain treasury settlement for open source teams — the Soroban vault
+  contract, the GitHub-to-chain bridge, and the client SDK/CLI, documented
+  together.
+site_url: https://splitstream-labs.github.io/splitstream-core/
+repo_url: https://github.com/SplitStream-Labs/splitstream-core
+repo_name: SplitStream-Labs/splitstream-core
+copyright: MIT licensed · SplitStream
+
+docs_dir: .docs-build/docs
+site_dir: site
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SplitStream-Labs
+      name: SplitStream-Labs on GitHub
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Overview:
+      - Home: index.md
+      - Architecture: architecture.md
+  - splitstream-core:
+      - Introduction: core/introduction.md
+      - Protocol mechanics: core/protocol-mechanics.md
+      - Contract reference: core/contract-reference.md
+      - For maintainers: core/for-maintainers.md
+      - Developer guide: core/developer-guide.md
+      - Contributing: core/contributing.md
+  - splitstream-actions:
+      - Introduction: actions/introduction.md
+      - How it works: actions/how-it-works.md
+      - Manifest reference: actions/manifest-reference.md
+      - For maintainers: actions/for-maintainers.md
+      - Developer guide: actions/developer-guide.md
+      - Contributing: actions/contributing.md
+  - splitstream-sdk-cli:
+      - Introduction: sdk-cli/introduction.md
+      - For contributors: sdk-cli/for-contributors.md
+      - For maintainers: sdk-cli/for-maintainers.md
+      - CLI reference: sdk-cli/cli-reference.md
+      - SDK reference: sdk-cli/sdk-reference.md
+      - Developer guide: sdk-cli/developer-guide.md
+      - Contributing: sdk-cli/contributing.md

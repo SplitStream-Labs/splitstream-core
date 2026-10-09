@@ -97,7 +97,7 @@ fn build_manifest(
         let mut proof = std::vec::Vec::new();
         let mut node = n + idx;
         while node > 1 {
-            let sibling = if node % 2 == 0 {
+            let sibling = if node.is_multiple_of(2) {
                 tree[node + 1].clone()
             } else {
                 tree[node - 1].clone()
