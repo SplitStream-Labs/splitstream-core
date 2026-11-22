@@ -27,9 +27,15 @@ pub(crate) fn create_vesting(
         return Err(SplitStreamError::InvalidAmount);
     }
 
-    let existing_claimed = storage::get_vesting(env, contributor)
-        .map(|v| v.claimed)
-        .unwrap_or(0);
+    let existing = storage::get_vesting(env, contributor);
+    let existing_claimed = existing.as_ref().map(|v| v.claimed).unwrap_or(0);
+
+    // A re-created schedule may never drop below what has already been paid
+    // out; otherwise `total - claimed` would be negative and the next claim
+    // would underflow the liability accounting.
+    if total < existing_claimed {
+        return Err(SplitStreamError::InvalidAmount);
+    }
 
     let schedule = VestingData {
         total,
@@ -37,6 +43,13 @@ pub(crate) fn create_vesting(
         start_ledger: env.ledger().sequence(),
         duration_ledgers,
     };
+    // Move the outstanding liability from the old remaining amount to the new
+    // one in a single step, so a re-created schedule cannot double-count.
+    let old_remaining = existing
+        .map(|v| v.total.saturating_sub(v.claimed))
+        .unwrap_or(0);
+    let new_remaining = total - existing_claimed;
+    storage::adjust_vesting_reserved(env, new_remaining - old_remaining)?;
     storage::set_vesting(env, contributor, &schedule);
 
     env.events().publish(
@@ -57,6 +70,7 @@ pub(crate) fn create_vesting(
 /// is not an error.
 pub(crate) fn claim_vested(env: &Env, contributor: &Address) -> Result<i128, SplitStreamError> {
     contributor.require_auth();
+    storage::bump_instance(env);
 
     let token = storage::get_token(env)?;
     let mut schedule =
@@ -74,12 +88,19 @@ pub(crate) fn claim_vested(env: &Env, contributor: &Address) -> Result<i128, Spl
         .and_then(|v| v.checked_div(i128::from(schedule.duration_ledgers)))
         .ok_or(SplitStreamError::InvalidAmount)?;
 
-    let claimable = vested - schedule.claimed;
+    // Saturating: `vested` can legitimately sit below `claimed` right after a
+    // schedule is re-created (claimed is preserved, the new schedule starts at
+    // zero elapsed). That is "nothing new to claim", not an underflow.
+    let claimable = vested.saturating_sub(schedule.claimed);
     if claimable <= 0 {
         return Ok(0);
     }
 
-    schedule.claimed += claimable;
+    schedule.claimed = schedule
+        .claimed
+        .checked_add(claimable)
+        .ok_or(SplitStreamError::InvalidAmount)?;
+    storage::adjust_vesting_reserved(env, -claimable)?;
     storage::set_vesting(env, contributor, &schedule);
 
     let contract = env.current_contract_address();
@@ -87,7 +108,11 @@ pub(crate) fn claim_vested(env: &Env, contributor: &Address) -> Result<i128, Spl
     soroban_sdk::token::TokenClient::new(env, &token).transfer(&contract, &to, &claimable);
 
     env.events().publish(
-        (Symbol::new(env, "vested_claimed"), contributor.clone(), claimable),
+        (
+            Symbol::new(env, "vested_claimed"),
+            contributor.clone(),
+            claimable,
+        ),
         (),
     );
     Ok(claimable)

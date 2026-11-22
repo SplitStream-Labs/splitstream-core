@@ -60,8 +60,11 @@ A manifest for cycle `1` with two contributors:
    `total_amount`.
 
 Note that this contract verifies the proof and pays. It does not compute the
-points behind 400 and 600 — that arithmetic lives in splitstream-actions, and
-`total_amount` is recorded but never summed against claims.
+points behind 400 and 600 — that arithmetic lives in splitstream-actions. The
+contract does, however, track the cumulative amount claimed per cycle and reject
+any claim that would push it above the posted `total_amount`
+(`CycleTotalExceeded`, 19), so a root whose leaves sum higher than the total it
+was posted with cannot over-pay.
 
 ## Worked example: fixed splits and dust
 

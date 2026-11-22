@@ -6,8 +6,8 @@
 
 [![CI](https://github.com/SplitStream-Labs/splitstream-core/actions/workflows/ci.yml/badge.svg)](https://github.com/SplitStream-Labs/splitstream-core/actions/workflows/ci.yml)
 [![Docs](https://img.shields.io/badge/docs-splitstream--labs.github.io-blue)](https://splitstream-labs.github.io/splitstream-core/)
-[![Soroban SDK](https://img.shields.io/badge/soroban--sdk-27.0.6-blue)](https://crates.io/crates/soroban-sdk)
-[![Network](https://img.shields.io/badge/network-testnet-orange)](https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC)
+[![Soroban SDK](https://img.shields.io/badge/soroban--sdk-28.0.0-blue)](https://crates.io/crates/soroban-sdk)
+[![Network](https://img.shields.io/badge/network-testnet-orange)](https://stellar.expert/explorer/testnet/contract/CB456KGXH4233BHW5BUEJMN6OJ4ZMWMPP3OXJU5HVQ2T2F7A7XHWLTAT)
 [![License](https://img.shields.io/github/license/SplitStream-Labs/splitstream-core)](LICENSE)
 
 **[📖 Documentation](https://splitstream-labs.github.io/splitstream-core/)** · [Testnet Explorer](https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
@@ -81,7 +81,8 @@ repo's `main` on every change:
 ## Quick Start
 
 Rust 1.91+ is required (the `wasm32v1-none` target). Pinned SDK:
-`soroban-sdk = "27.0.6"` (latest stable; do not use release candidates).
+`soroban-sdk = "28.0.0"`, built with `stellar-cli` 28.1.0 (do not use release
+candidates).
 
 ```bash
 # Tests (soroban-sdk testutils; no network needed)
@@ -101,11 +102,20 @@ to `main`.
 
 ## Storage design
 
-`Admin`, `Oracle`, `Token` live in **instance** storage (TTL bumped on every
-admin-gated call). `CycleData`, `CycleClaimed`, `Balance`, `FixedShares`,
-`Vesting` and `SweepRequest` live in **persistent** storage; every write
-extends the entry TTL in the same call (`storage::bump_persistent`) — a missing
-`extend_ttl` is the classic Soroban bug where accounting silently expires.
+`Admin`, `Oracle`, `Token`, `CreditedTotal` and `VestingReserved` live in
+**instance** storage; the instance TTL is bumped on *every* state-changing
+entry point, not just the admin-gated ones, because a lapsed instance is
+unreachable at all. `CycleData`, `CycleClaimed`, `CycleClaimedTotal`,
+`Balance`, `FixedShares`, `Vesting` and `SweepRequest` live in **persistent**
+storage; every write extends the entry TTL in the same call
+(`storage::bump_persistent`) — a missing `extend_ttl` is the classic Soroban bug
+where accounting silently expires.
+
+`CreditedTotal` and `VestingReserved` are the vault's **liability ledger**: they
+track everything it owes contributors (outstanding pull-payment balances plus
+unvested schedule remaining). `execute_sweep` will only move funds above that
+line, so an admin sweep can never strand a claim the vault already owes. See
+`get_available_funds`.
 
 ## Contract functions
 
@@ -126,18 +136,32 @@ extends the entry TTL in the same call (`storage::bump_persistent`) — a missin
 | `execute_sweep()` | admin | Executes the sweep once the timelock has elapsed. |
 | `cancel_sweep()` | admin | Clears a pending sweep request (idempotent). |
 | `get_balance(contributor)` / `get_cycle_info(cycle_id)` / `has_claimed(cycle_id, contributor)` / `get_vesting(contributor)` / `get_fixed_shares()` | — | Read-only views. |
+| `get_total_credited()` / `get_vesting_reserved()` | — | Outstanding liabilities: credited balances and unvested schedule remaining. |
+| `get_available_funds()` | — | Tokens the vault holds above its liabilities — the maximum a sweep can move. |
 
 The [contract reference](https://splitstream-labs.github.io/splitstream-core/core/contract-reference/)
 documents every parameter, event, and error discriminant.
 
 ## Deployed — Testnet
 
+Current deployment of the hardened contract, built with
+`stellar-cli` 28.1.0 from the `main` revision and initialized on Testnet:
+
 | | |
 |---|---|
-| Vault contract | `CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC` |
+| Vault contract | `CB456KGXH4233BHW5BUEJMN6OJ4ZMWMPP3OXJU5HVQ2T2F7A7XHWLTAT` |
 | Token contract | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native SAC) |
-| Explorer | https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC |
+| Admin | `GDTEFWNE6KIWYKU4GIVINPIIQ26E2ZMNCHCQOHFUIEFV3E4UJWVROB54` |
+| Oracle | `GAW3G4BHBS37J2V3TBX4FGTIY3JXUF6YG44AAQDRV7QE2KHBEMROMJVX` |
+| Explorer | https://stellar.expert/explorer/testnet/contract/CB456KGXH4233BHW5BUEJMN6OJ4ZMWMPP3OXJU5HVQ2T2F7A7XHWLTAT |
 | Network | Test SDF Network ; September 2015 (Testnet) |
+
+Smoke-tested after initialization: `deposit` of 10,000,000 stroops succeeded and
+`get_available_funds` returned `10_000_000` with both liabilities at `0`.
+
+The previous revision was deployed at
+`CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC` and is superseded by
+the address above.
 
 ## Repository layout
 
@@ -163,12 +187,16 @@ scripts/           # assemble_docs.py — merges the three repos' docs for MkDoc
 
 These are deliberate, documented decisions (each noted in its commit message):
 
+- **Sweeps are capped at free funds.** `execute_sweep` compares the requested
+  amount against the token balance minus `CreditedTotal` and
+  `VestingReserved`, and fails with `InsufficientFreeFunds` otherwise. Without
+  it a 72-hour timelock only delays draining funds that are already owed.
 - **`SweepRequest` is persistent, not temporary.** Temporary entries have a
   Mainnet max TTL of 17,280 ledgers (~1 day), shorter than the 72-hour sweep
   timelock — a request there would expire before it could execute.
-- **`distribute_fixed` is split into two auth-gated functions.** SDK 27
-  removed `current_contract_invoker` (the caller-introspection API) in the
-  22.x auth rework, and a failed `require_auth` aborts the invocation, so an
+- **`distribute_fixed` is split into two auth-gated functions.** The SDK's
+  22.x auth rework removed `current_contract_invoker` (the caller-introspection
+  API), and a failed `require_auth` aborts the invocation, so an
   "admin OR oracle" check cannot be expressed in one function. `distribute_fixed`
   is oracle-gated (the automated trigger); `admin_distribute_fixed` is the
   admin-gated manual twin. Both delegate to one shared internal body, so they
