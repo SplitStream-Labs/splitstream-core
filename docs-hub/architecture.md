@@ -74,7 +74,7 @@ must land in all three repos together.
    verifies. Described once, in
    [Manifest reference](actions/manifest-reference.md).
 
-3. **The contract ABI.** The 19 public functions and the 17 error
+3. **The contract ABI.** The 22 public functions and the 19 error
    discriminants of `splitstream-core` are addressed by name and number from
    both the SDK and the relay. Error numbers must never be renumbered — see
    [Contract reference](core/contract-reference.md).

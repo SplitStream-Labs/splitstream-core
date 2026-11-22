@@ -53,16 +53,33 @@ boundaries:
 5. **Withdraw zeroes the balance before transferring** (checks-effects-
    interactions), preventing re-entrant double-withdrawals.
 6. **Re-created vesting schedules preserve `claimed`** — no re-claiming
-   already-vested funds.
-7. **All math is integer basis-points** — no float rounding drift, and no
+   already-vested funds, and a schedule can never be re-created below the
+   amount already paid out.
+7. **Liabilities are tracked, not inferred.** `CreditedTotal` and
+   `VestingReserved` in instance storage mirror what the vault owes; every
+   balance write adjusts them in the same transaction.
+8. **A sweep can never strand a claim.** `execute_sweep` is bounded by
+   `balance(vault) - CreditedTotal - VestingReserved`, so the admin cannot
+   move funds that back credited balances or unvested schedule remaining.
+9. **No over-payment per cycle.** Cumulative claims per cycle cannot exceed the
+   `total_amount` the oracle committed to, even if the committed root's leaves
+   sum higher.
+10. **All math is integer basis-points** — no float rounding drift, and no
    unbounded loops over contributor sets.
+11. **No entry point can be bricked by a lapsed instance TTL** — every
+   state-changing function bumps the instance TTL, since `Admin`, `Oracle` and
+   `Token` live there and a lapsed instance is unreachable.
 
 ## Known considerations
 
-- `distribute_fixed` is oracle-gated only (SDK 27 has no caller-introspection
+- `distribute_fixed` is oracle-gated only (the SDK has no caller-introspection
   API); see the README design-decisions section. The oracle is an operational
   trust anchor — its key should be held by the CI system with appropriate
   controls.
+- Vesting rewards are paid directly from the vault's token balance rather than
+  credited to a pull-payment balance, so a vesting claim relies on the vault
+  holding the funds. `get_available_funds` and `get_vesting_reserved` expose the
+  position; fund deposits before creating schedules.
 - Basis-point splits truncate toward zero per recipient, so a distribution can
   leave dust in the vault; it is swept or re-distributed in later cycles.
 - The challenge window and sweep timelock are measured in ledger **timestamps**

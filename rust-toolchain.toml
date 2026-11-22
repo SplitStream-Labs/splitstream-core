@@ -2,7 +2,7 @@
 #
 # CI and local builds track the `stable` channel; the minimum supported Rust
 # version is 1.91 (declared as `rust-version` in Cargo.toml), which is what
-# `soroban-sdk 27.0.6` requires. Declaring the target and components here means
+# `soroban-sdk 28.0.0` requires. Declaring the target and components here means
 # `rustup` installs them automatically on first `cargo`/`rustup` invocation
 # inside the repository — no manual `rustup target add` needed.
 [toolchain]

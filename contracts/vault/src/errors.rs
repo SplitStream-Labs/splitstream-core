@@ -41,4 +41,8 @@ pub enum SplitStreamError {
     ClaimsAlreadyStarted = 16,
     /// The contributor has no vesting schedule to claim against.
     NoVestingSchedule = 17,
+    /// The sweep would take funds reserved for credited balances or vesting.
+    InsufficientFreeFunds = 18,
+    /// Claims for this cycle would exceed the posted `total_amount`.
+    CycleTotalExceeded = 19,
 }
