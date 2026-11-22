@@ -54,8 +54,19 @@ pub(crate) fn execute_sweep(env: &Env) -> Result<(), SplitStreamError> {
 
     let token = storage::get_token(env)?;
     let contract = env.current_contract_address();
+    let token_client = soroban_sdk::token::TokenClient::new(env, &token);
+
+    // The sweep may only move free funds: everything above the balances credited
+    // to contributors and the outstanding vesting liability. Without this, an
+    // admin sweep could strand claims that the vault already owes.
+    let on_hand = token_client.balance(&contract);
+    let available = on_hand.saturating_sub(storage::get_reserved_total(env)?);
+    if request.amount > available {
+        return Err(SplitStreamError::InsufficientFreeFunds);
+    }
+
     let to: MuxedAddress = (&request.to).into();
-    soroban_sdk::token::TokenClient::new(env, &token).transfer(&contract, &to, &request.amount);
+    token_client.transfer(&contract, &to, &request.amount);
     storage::clear_sweep_request(env);
 
     env.events().publish(
@@ -77,7 +88,8 @@ pub(crate) fn cancel_sweep(env: &Env) -> Result<(), SplitStreamError> {
     storage::bump_instance(env);
 
     if storage::clear_sweep_request(env) {
-        env.events().publish((Symbol::new(env, "sweep_cancelled"),), ());
+        env.events()
+            .publish((Symbol::new(env, "sweep_cancelled"),), ());
     }
     Ok(())
 }

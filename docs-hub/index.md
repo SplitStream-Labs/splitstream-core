@@ -72,7 +72,7 @@ through `splitstream-sdk-cli`.
 | I want to… | Go to |
 |---|---|
 | Understand the protocol end to end | [Architecture](architecture.md) |
-| Read the contract's 19 public functions and 17 errors | [Contract reference](core/contract-reference.md) |
+| Read the contract's 22 public functions and 19 errors | [Contract reference](core/contract-reference.md) |
 | See a cycle lifecycle with a worked numeric example | [Protocol mechanics](core/protocol-mechanics.md) |
 | Configure the GitHub Action for my org | [For maintainers (actions)](actions/for-maintainers.md) |
 | Claim a payout as a contributor | [For contributors (sdk-cli)](sdk-cli/for-contributors.md) |

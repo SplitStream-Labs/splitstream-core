@@ -64,7 +64,7 @@ impl TestEnv {
 /// Build a balanced Merkle tree over manifest entries using the same
 /// sorted-pair convention as the verifier, returning the root and per-entry
 /// bottom-up proofs. `entries` must be a power-of-two count.
-fn build_manifest(
+pub(crate) fn build_manifest(
     env: &Env,
     entries: &[(Address, i128)],
 ) -> (BytesN<32>, std::vec::Vec<(Address, i128, Vec<BytesN<32>>)>) {
@@ -74,7 +74,10 @@ fn build_manifest(
         .collect();
     leaves.sort_by(|a, b| a.2.cmp(&b.2));
     let n = leaves.len();
-    assert!(n.is_power_of_two(), "test manifests use power-of-two leaves");
+    assert!(
+        n.is_power_of_two(),
+        "test manifests use power-of-two leaves"
+    );
 
     // Heap-style tree array: unused index 0, internal nodes at [1, n),
     // leaves at [n, 2n).
@@ -115,7 +118,7 @@ fn build_manifest(
 }
 
 /// Look up the proof for a specific contributor.
-fn proof_for<'a>(
+pub(crate) fn proof_for<'a>(
     claims: &'a [(Address, i128, Vec<BytesN<32>>)],
     addr: &Address,
 ) -> &'a Vec<BytesN<32>> {
@@ -149,8 +152,7 @@ mod deposit_claims {
                 &t.env,
                 (
                     t.contract_id.clone(),
-                    (Symbol::new(&t.env, "deposit"), t.admin.clone(), 1_000_i128)
-                        .into_val(&t.env),
+                    (Symbol::new(&t.env, "deposit"), t.admin.clone(), 1_000_i128).into_val(&t.env),
                     ().into_val(&t.env),
                 )
             ]
@@ -432,18 +434,30 @@ mod fixed_vesting_sweep {
     #[test]
     fn fixed_shares_must_sum_to_10000() {
         let t = setup();
-        let bad = vec![&t.env, (t.admin.clone(), 9_998_u32), (t.oracle.clone(), 1_u32)];
+        let bad = vec![
+            &t.env,
+            (t.admin.clone(), 9_998_u32),
+            (t.oracle.clone(), 1_u32),
+        ];
         assert_eq!(
             t.client().try_configure_fixed_shares(&bad),
             Err(Ok(SplitStreamError::InvalidShareTotal))
         );
-        let bad = vec![&t.env, (t.admin.clone(), 5_000_u32), (t.oracle.clone(), 5_001_u32)];
+        let bad = vec![
+            &t.env,
+            (t.admin.clone(), 5_000_u32),
+            (t.oracle.clone(), 5_001_u32),
+        ];
         assert_eq!(
             t.client().try_configure_fixed_shares(&bad),
             Err(Ok(SplitStreamError::InvalidShareTotal))
         );
 
-        let good = vec![&t.env, (t.admin.clone(), 5_000_u32), (t.oracle.clone(), 5_000_u32)];
+        let good = vec![
+            &t.env,
+            (t.admin.clone(), 5_000_u32),
+            (t.oracle.clone(), 5_000_u32),
+        ];
         t.client().configure_fixed_shares(&good);
         assert_eq!(t.client().get_fixed_shares(), good);
     }
@@ -658,12 +672,113 @@ mod fixed_vesting_sweep {
     }
 
     #[test]
+    fn vesting_recreate_below_claimed_is_rejected() {
+        let t = setup();
+        fund_vault(&t, 10_000);
+        t.env.ledger().set_sequence_number(100);
+        t.client().create_vesting(&t.admin, &1_000, &100);
+        t.env.ledger().set_sequence_number(300); // fully vested
+        assert_eq!(t.client().claim_vested(&t.admin), 1_000);
+
+        // Dropping the total below what was already paid out would make
+        // `total - claimed` negative and corrupt the liability accounting.
+        assert_eq!(
+            t.client().try_create_vesting(&t.admin, &500, &100),
+            Err(Ok(SplitStreamError::InvalidAmount))
+        );
+        // Equal to claimed is allowed and leaves nothing outstanding.
+        t.env.ledger().set_sequence_number(400);
+        t.client().create_vesting(&t.admin, &1_000, &100);
+        assert_eq!(t.client().claim_vested(&t.admin), 0);
+        assert_eq!(t.client().get_vesting_reserved(), 0);
+    }
+
+    #[test]
     fn sweep_rejects_nonpositive_amount() {
         let t = setup();
         assert_eq!(
             t.client().try_request_sweep(&t.oracle, &0),
             Err(Ok(SplitStreamError::InvalidAmount))
         );
+    }
+}
+mod solvency {
+    use super::*;
+
+    #[test]
+    fn credited_balances_are_reserved_against_sweeps() {
+        let t = setup();
+        fund_vault(&t, 10_000);
+        let shares = vec![&t.env, (t.admin.clone(), 10_000_u32)];
+        t.client().configure_fixed_shares(&shares);
+        t.client().distribute_fixed(&1_000);
+
+        assert_eq!(t.client().get_total_credited(), 1_000);
+        assert_eq!(t.client().get_vesting_reserved(), 0);
+        assert_eq!(t.client().get_available_funds(), 9_000);
+
+        t.client().request_sweep(&t.oracle, &9_001);
+        t.env.ledger().set_timestamp(SWEEP_TIMELOCK_SECS);
+        assert_eq!(
+            t.client().try_execute_sweep(),
+            Err(Ok(SplitStreamError::InsufficientFreeFunds))
+        );
+
+        // The contributor's credited balance still withdraws in full.
+        t.client().withdraw(&t.admin);
+        assert_eq!(t.token_balance(&t.admin), 1_000);
+        assert_eq!(t.client().get_total_credited(), 0);
+
+        // Now that nothing is owed, the balance is free again.
+        t.client().request_sweep(&t.oracle, &9_000);
+        t.env.ledger().set_timestamp(2 * SWEEP_TIMELOCK_SECS);
+        t.client().execute_sweep();
+        assert_eq!(t.token_balance(&t.oracle), 9_000);
+    }
+
+    #[test]
+    fn vesting_liability_is_reserved_against_sweeps() {
+        let t = setup();
+        fund_vault(&t, 10_000);
+        t.env.ledger().set_sequence_number(100);
+        t.client().create_vesting(&t.admin, &4_000, &100);
+
+        // Nothing has vested, so the whole schedule is still a liability.
+        assert_eq!(t.client().get_vesting_reserved(), 4_000);
+        assert_eq!(t.client().get_available_funds(), 6_000);
+
+        t.client().request_sweep(&t.oracle, &6_001);
+        t.env.ledger().set_timestamp(SWEEP_TIMELOCK_SECS);
+        assert_eq!(
+            t.client().try_execute_sweep(),
+            Err(Ok(SplitStreamError::InsufficientFreeFunds))
+        );
+
+        // Half vests: the liability halves and that half becomes free.
+        t.env.ledger().set_sequence_number(150);
+        assert_eq!(t.client().claim_vested(&t.admin), 2_000);
+        assert_eq!(t.client().get_vesting_reserved(), 2_000);
+        assert_eq!(t.client().get_available_funds(), 6_000);
+    }
+
+    #[test]
+    fn claims_are_capped_at_the_posted_cycle_total() {
+        let t = setup();
+        fund_vault(&t, 10_000);
+        let (root, claims) =
+            build_manifest(&t.env, &[(t.admin.clone(), 100), (t.oracle.clone(), 200)]);
+        // Post a total lower than the sum of the manifest's leaves.
+        t.client().post_cycle_root(&1, &root, &250);
+        t.env.ledger().set_timestamp(CHALLENGE_WINDOW_SECS);
+
+        t.client()
+            .credit_claim(&t.admin, &1, &100, proof_for(&claims, &t.admin));
+        assert_eq!(
+            t.client()
+                .try_credit_claim(&t.oracle, &1, &200, proof_for(&claims, &t.oracle)),
+            Err(Ok(SplitStreamError::CycleTotalExceeded))
+        );
+        assert_eq!(t.client().get_total_credited(), 100);
     }
 }
 mod auth {
@@ -855,9 +970,7 @@ mod auth {
             "credit_claim",
             (admin.clone(), 1_u64, 100_i128, proof.clone()).into_val(&env),
         );
-        assert!(client
-            .try_credit_claim(&admin, &1, &100, &proof)
-            .is_err());
+        assert!(client.try_credit_claim(&admin, &1, &100, &proof).is_err());
 
         // The contributor's own auth passes, and the empty proof then fails
         // verification — proving auth is checked first.
