@@ -8,9 +8,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Pin the CLI major to the SDK major (27.x) so the wasm build path used in
-  # CI matches the one used for the Testnet deployment.
-  STELLAR_CLI_VERSION: 27.1.0
+  # Pin the CLI major to the SDK major (28.x) so the wasm build path used in
+  # CI matches the one used for the Testnet deployment. SDK 28 refuses to
+  # produce a contract artifact under a CLI older than 25.2.0.
+  STELLAR_CLI_VERSION: 28.1.0
 
 jobs:
   ci:

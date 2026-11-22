@@ -35,6 +35,12 @@ pub enum DataKey {
     CycleClaimed(u64, Address),
     /// Pull-payment claimable balance — persistent storage.
     Balance(Address),
+    /// Sum of all outstanding pull-payment balances — instance storage.
+    CreditedTotal,
+    /// Outstanding (unvested-but-owned) vesting liability — instance storage.
+    VestingReserved,
+    /// Cumulative amount claimed against a cycle — persistent storage.
+    CycleClaimedTotal(u64),
     /// Fixed basis-point split list (sums to 10_000) — persistent storage.
     FixedShares,
     /// Linear vesting schedule — persistent storage.
@@ -102,6 +108,58 @@ pub fn set_token(env: &Env, token: &Address) {
     env.storage().instance().set(&DataKey::Token, token);
 }
 
+/// Total of every contributor's outstanding pull-payment balance.
+pub fn get_credited_total(env: &Env) -> i128 {
+    env.storage()
+        .instance()
+        .get::<DataKey, i128>(&DataKey::CreditedTotal)
+        .unwrap_or(0)
+}
+
+pub fn set_credited_total(env: &Env, amount: i128) {
+    env.storage()
+        .instance()
+        .set(&DataKey::CreditedTotal, &amount);
+}
+
+/// Amount still owed to contributors under vesting schedules
+/// (`sum(total - claimed)`). Read on every sweep so the admin can never
+/// sweep funds that a contributor is entitled to claim.
+pub fn get_vesting_reserved(env: &Env) -> i128 {
+    env.storage()
+        .instance()
+        .get::<DataKey, i128>(&DataKey::VestingReserved)
+        .unwrap_or(0)
+}
+
+pub fn set_vesting_reserved(env: &Env, amount: i128) {
+    env.storage()
+        .instance()
+        .set(&DataKey::VestingReserved, &amount);
+}
+
+/// Every unit of the token the vault owes to someone: credited balances plus
+/// outstanding vesting liability. `execute_sweep` may only move funds above
+/// this line.
+pub fn get_reserved_total(env: &Env) -> Result<i128, SplitStreamError> {
+    get_credited_total(env)
+        .checked_add(get_vesting_reserved(env))
+        .ok_or(SplitStreamError::InvalidAmount)
+}
+
+/// Adjust the outstanding vesting liability by `delta` (positive when a
+/// schedule is created or enlarged, negative when a contribution vests).
+pub fn adjust_vesting_reserved(env: &Env, delta: i128) -> Result<(), SplitStreamError> {
+    let updated = get_vesting_reserved(env)
+        .checked_add(delta)
+        .ok_or(SplitStreamError::InvalidAmount)?;
+    if updated < 0 {
+        return Err(SplitStreamError::InvalidAmount);
+    }
+    set_vesting_reserved(env, updated);
+    Ok(())
+}
+
 pub fn get_cycle_info(env: &Env, cycle_id: u64) -> Option<CycleInfo> {
     env.storage()
         .persistent()
@@ -147,13 +205,58 @@ pub fn set_balance(env: &Env, contributor: &Address, amount: i128) {
 
 /// Credit a balance by `delta` (which may be negative when a distribution is
 /// corrected), returning the new balance. Extends the TTL on write.
-pub fn add_balance(env: &Env, contributor: &Address, delta: i128) -> Result<i128, SplitStreamError> {
+pub fn add_balance(
+    env: &Env,
+    contributor: &Address,
+    delta: i128,
+) -> Result<i128, SplitStreamError> {
     let current = get_balance(env, contributor);
     let new_balance = current
         .checked_add(delta)
         .ok_or(SplitStreamError::InvalidAmount)?;
+    let new_total = get_credited_total(env)
+        .checked_add(delta)
+        .ok_or(SplitStreamError::InvalidAmount)?;
+    if new_balance < 0 || new_total < 0 {
+        return Err(SplitStreamError::InvalidAmount);
+    }
     set_balance(env, contributor, new_balance);
+    set_credited_total(env, new_total);
     Ok(new_balance)
+}
+
+/// Zero a contributor's balance and return the amount removed, decreasing the
+/// outstanding credited total by the same amount. Used by `withdraw` so the
+/// liability and the balance can never drift apart.
+pub fn take_balance(env: &Env, contributor: &Address) -> Result<i128, SplitStreamError> {
+    let balance = get_balance(env, contributor);
+    if balance <= 0 {
+        return Err(SplitStreamError::InsufficientBalance);
+    }
+    let new_total = get_credited_total(env)
+        .checked_sub(balance)
+        .ok_or(SplitStreamError::InvalidAmount)?;
+    if new_total < 0 {
+        return Err(SplitStreamError::InvalidAmount);
+    }
+    set_balance(env, contributor, 0);
+    set_credited_total(env, new_total);
+    Ok(balance)
+}
+
+/// Cumulative amount credited against a cycle's manifest.
+pub fn get_cycle_claimed_total(env: &Env, cycle_id: u64) -> i128 {
+    env.storage()
+        .persistent()
+        .get::<DataKey, i128>(&DataKey::CycleClaimedTotal(cycle_id))
+        .unwrap_or(0)
+}
+
+/// Set the cumulative claimed amount for a cycle and extend its TTL.
+pub fn set_cycle_claimed_total(env: &Env, cycle_id: u64, amount: i128) {
+    let key = DataKey::CycleClaimedTotal(cycle_id);
+    env.storage().persistent().set(&key, &amount);
+    bump_persistent(env, &key);
 }
 
 /// The configured fixed split list; empty when never configured.
@@ -166,7 +269,9 @@ pub fn get_fixed_shares(env: &Env) -> Vec<(Address, u32)> {
 
 /// Overwrite the fixed split list and extend the TTL.
 pub fn set_fixed_shares(env: &Env, shares: &Vec<(Address, u32)>) {
-    env.storage().persistent().set(&DataKey::FixedShares, shares);
+    env.storage()
+        .persistent()
+        .set(&DataKey::FixedShares, shares);
     bump_persistent(env, &DataKey::FixedShares);
 }
 

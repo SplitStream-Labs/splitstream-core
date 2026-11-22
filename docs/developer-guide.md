@@ -4,13 +4,15 @@
 
 - **Rust 1.91+** — `rust-version = "1.91"` in the workspace manifest, required
   for the `wasm32v1-none` Soroban target and the MSRV declared by
-  `soroban-sdk` 27.0.6.
+  `soroban-sdk` 28.0.0.
 - **Soroban target** — `rustup target add wasm32v1-none`.
-- **`soroban-sdk` is pinned to `27.0.6`** in `contracts/vault/Cargo.toml`. Do
+- **`soroban-sdk` is pinned to `28.0.0`** in `contracts/vault/Cargo.toml`. Do
   not use release candidates. The test dependency uses the same version with the
   `testutils` feature.
-- **`stellar-cli` 27.x** — pinned to the SDK major so the wasm path used
-  locally matches the one used for the Testnet deployment. CI pins `27.1.0`.
+- **`stellar-cli` 28.x** — pinned to the SDK major so the wasm path used
+  locally matches the one used for the Testnet deployment. CI pins `28.1.0`.
+  SDK 28 refuses to emit a contract artifact from a CLI older than 25.2.0, so
+  a matching CLI is required, not optional.
   Install it from the release binary
   (`stellar-cli-<version>-x86_64-unknown-linux-gnu.tar.gz`) rather than
   building it.
@@ -102,11 +104,31 @@ This is the record of that sequence for the live Testnet vault:
 
 | Step | Value |
 |---|---|
-| Built artifact | `target/wasm32v1-none/release/splitstream_vault.wasm` (~20 KB) |
-| Deployed vault | `CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC` |
+| Built artifact | `target/wasm32v1-none/release/splitstream_vault.wasm` (22,606 bytes) |
+| Built with | `stellar-cli` 28.1.0, `soroban-sdk` 28.0.0 |
+| Deployed vault | `CB456KGXH4233BHW5BUEJMN6OJ4ZMWMPP3OXJU5HVQ2T2F7A7XHWLTAT` |
+| Admin passed to `initialize` | `GDTEFWNE6KIWYKU4GIVINPIIQ26E2ZMNCHCQOHFUIEFV3E4UJWVROB54` |
+| Oracle passed to `initialize` | `GAW3G4BHBS37J2V3TBX4FGTIY3JXUF6YG44AAQDRV7QE2KHBEMROMJVX` |
 | Token passed to `initialize` | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` (native XLM SAC) |
 | Network | `testnet` — Test SDF Network ; September 2015 |
-| Explorer | https://stellar.expert/explorer/testnet/contract/CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC |
+| Deploy tx | https://stellar.expert/explorer/testnet/tx/05486762036ebad10fb488e657fe4efaa625a5a1438b397e86ee09727a937592 |
+| `initialize` tx | https://stellar.expert/explorer/testnet/tx/fcf562b961ff3c6c240687eaf6d3546ae1c830d28abc60fa4d08f9af43262483 |
+| Explorer | https://stellar.expert/explorer/testnet/contract/CB456KGXH4233BHW5BUEJMN6OJ4ZMWMPP3OXJU5HVQ2T2F7A7XHWLTAT |
+
+Post-deploy smoke test (all against the address above):
+
+| Call | Result |
+|---|---|
+| `deposit(wave-admin, 10_000_000)` | success, `deposit` event emitted |
+| `get_available_funds` | `10_000_000` |
+| `get_total_credited` | `0` |
+| `get_vesting_reserved` | `0` |
+| `get_fixed_shares` | `[]` |
+| `has_claimed(1, wave-admin)` | `false` |
+
+The earlier revision is still visible at
+`CCC2LP2LOYZOLA2JW4C4K7JMR3TRJZIKHDSQYSFJ3R3MCDJLVBT3PZOC`; it predates the
+solvency and TTL fixes and should not be used.
 
 Check that the contract responds before using it:
 

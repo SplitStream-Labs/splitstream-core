@@ -29,8 +29,10 @@ pub(crate) fn configure_fixed_shares(
     }
 
     storage::set_fixed_shares(env, shares);
-    env.events()
-        .publish((Symbol::new(env, "fixed_shares_configured"),), shares.clone());
+    env.events().publish(
+        (Symbol::new(env, "fixed_shares_configured"),),
+        shares.clone(),
+    );
     Ok(())
 }
 
@@ -63,6 +65,8 @@ pub(crate) fn admin_distribute_fixed(env: &Env, amount: i128) -> Result<(), Spli
 /// balance and emit one `fixed_distributed` event per recipient. Auth is
 /// enforced by the callers above, never here.
 fn internal_distribute_fixed(env: &Env, amount: i128) -> Result<(), SplitStreamError> {
+    storage::bump_instance(env);
+
     if amount <= 0 {
         return Err(SplitStreamError::InvalidAmount);
     }
@@ -80,7 +84,11 @@ fn internal_distribute_fixed(env: &Env, amount: i128) -> Result<(), SplitStreamE
             .ok_or(SplitStreamError::InvalidAmount)?;
         storage::add_balance(env, &address, share)?;
         env.events().publish(
-            (Symbol::new(env, "fixed_distributed"), address.clone(), share),
+            (
+                Symbol::new(env, "fixed_distributed"),
+                address.clone(),
+                share,
+            ),
             (),
         );
     }

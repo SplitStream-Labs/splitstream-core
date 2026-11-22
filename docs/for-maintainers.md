@@ -144,8 +144,9 @@ cancel_sweep()                             // admin auth — any time
 |---|---|
 | `request_sweep` | Registers `{ to, amount, requested_at }`. Rejects `amount <= 0` with `InvalidAmount`. Emits `sweep_requested`. |
 | `request_sweep` again | Overwrites the pending request and **restarts the timelock** from the new `requested_at`. |
-| `execute_sweep` | Requires `elapsed >= SWEEP_TIMELOCK_SECS = 259_200` (72h). Transfers the amount, clears the request, emits `sweep_executed`. |
+| `execute_sweep` | Requires `elapsed >= SWEEP_TIMELOCK_SECS = 259_200` (72h) and `amount <=` the vault's free funds. Transfers the amount, clears the request, emits `sweep_executed`. |
 | `execute_sweep` before 72h | `SweepNotReady` (10). |
+| `execute_sweep` above free funds | `InsufficientFreeFunds` (18). Free funds are the token balance minus `get_total_credited()` and `get_vesting_reserved()` — see `get_available_funds()`. |
 | `execute_sweep` with no request | `NoSweepPending` (11). |
 | `cancel_sweep` | Clears any pending request, idempotent, emits `sweep_cancelled` only if a request existed. |
 
@@ -153,9 +154,12 @@ The timelock is measured in ledger timestamp seconds, not sequence numbers.
 
 Two things to know before sweeping:
 
-- **The sweep is not balance-aware.** It will move funds that back
-  already-credited, unwithdrawn `Balance` entries, leaving those contributors'
-  `withdraw` calls to fail at the token transfer. Check outstanding claims first.
+- **The sweep is reserve-aware.** It can only move funds above every
+  outstanding `Balance` entry and the outstanding vesting liability. If you
+  request more than `get_available_funds()` returns, `execute_sweep` fails with
+  `InsufficientFreeFunds` — contributors' `withdraw` and `claim_vested` calls
+  can no longer be stranded by a sweep. To release pool funds, distribute or
+  settle the liabilities first, then sweep what is left.
 - **Only the admin can cancel.** `cancel_sweep` requires the same key that
   calls `execute_sweep`, so the timelock is not a veto anyone else holds. What
   it buys is 72 hours of visibility: contributors can `withdraw` credited

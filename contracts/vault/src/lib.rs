@@ -38,6 +38,8 @@ mod types;
 mod vesting;
 
 #[cfg(test)]
+mod property_test;
+#[cfg(test)]
 mod test;
 
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, MuxedAddress, Symbol, Vec};
@@ -59,10 +61,12 @@ impl SplitStreamVault {
         oracle: Address,
         token: Address,
     ) -> Result<(), SplitStreamError> {
-        admin.require_auth();
+        // Checked before `require_auth` so a second call reports the real
+        // reason for the failure rather than an auth trap for a different key.
         if storage::is_initialized(&env) {
             return Err(SplitStreamError::AlreadyInitialized);
         }
+        admin.require_auth();
         storage::set_admin(&env, &admin);
         storage::set_oracle(&env, &oracle);
         storage::set_token(&env, &token);
@@ -84,6 +88,7 @@ impl SplitStreamVault {
     pub fn deposit(env: Env, from: Address, amount: i128) -> Result<(), SplitStreamError> {
         let token = storage::get_token(&env)?;
         from.require_auth();
+        storage::bump_instance(&env);
         if amount <= 0 {
             return Err(SplitStreamError::InvalidAmount);
         }
@@ -107,6 +112,7 @@ impl SplitStreamVault {
     ) -> Result<(), SplitStreamError> {
         let oracle = storage::get_oracle(&env)?;
         oracle.require_auth();
+        storage::bump_instance(&env);
 
         if storage::get_cycle_info(&env, cycle_id).is_some() {
             return Err(SplitStreamError::CycleAlreadyPosted);
@@ -281,5 +287,30 @@ impl SplitStreamVault {
     /// The configured fixed split list.
     pub fn get_fixed_shares(env: Env) -> Vec<(Address, u32)> {
         storage::get_fixed_shares(&env)
+    }
+
+    /// Sum of every contributor's outstanding pull-payment balance.
+    pub fn get_total_credited(env: Env) -> i128 {
+        storage::get_credited_total(&env)
+    }
+
+    /// Amount still owed under vesting schedules (`sum(total - claimed)`).
+    pub fn get_vesting_reserved(env: Env) -> i128 {
+        storage::get_vesting_reserved(&env)
+    }
+
+    /// Token balance the vault actually controls: credited balances plus
+    /// vesting liability are excluded, so this is the most `execute_sweep`
+    /// can move. Floored at zero, since an under-funded vault owes more than
+    /// it holds.
+    pub fn get_available_funds(env: Env) -> i128 {
+        let token = match storage::get_token(&env) {
+            Ok(token) => token,
+            Err(_) => return 0,
+        };
+        let on_hand = soroban_sdk::token::TokenClient::new(&env, &token)
+            .balance(&env.current_contract_address());
+        let reserved = storage::get_reserved_total(&env).unwrap_or(i128::MAX);
+        on_hand.saturating_sub(reserved)
     }
 }
